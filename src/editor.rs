@@ -1,4 +1,4 @@
-use std::{env, error::Error, io};
+use std::{env, error::Error, io, time::{Instant, Duration}};
 
 use termion::{color, event::Key};
 
@@ -15,6 +15,20 @@ pub struct Position {
     pub y: usize,
 }
 
+struct StatusMessage {
+    text: String,
+    time: Instant,
+}
+
+impl StatusMessage {
+    fn from(text: String) -> Self {
+        Self {
+            text,
+            time: Instant::now(),
+        }
+    }
+}
+
 pub struct Editor {
     stop: bool,
     terminal: Terminal,
@@ -23,14 +37,21 @@ pub struct Editor {
     document: Document,
     // keep track of what row of the file the user is currently scrolled to
     offset: Position,
+    status_message: StatusMessage,
 }
 
 impl Editor {
     pub fn new() -> Self {
         let args: Vec<String> = env::args().collect();
+        let mut init_status = String::from("HELP: CTRL-Q quit");
         let document = if args.len() > 1 {
             let filename = &args[1];
-            Document::open(filename).unwrap_or_default()
+            if let Ok(doc) = Document::open(filename) {
+                doc
+            } else {
+                init_status = format!("ERR: Cannot open file: {filename}");
+                Document::default()
+            }
         } else {
             Document::default()
         };
@@ -40,6 +61,7 @@ impl Editor {
             position: Position::default(),
             document,
             offset: Position::default(),
+            status_message: StatusMessage::from(init_status),
         }
     }
 
@@ -242,7 +264,6 @@ impl Editor {
     }
 
     fn draw_status_bar(&self) {
-        
         let mut status;
         let width = self.terminal.width() as usize;
         let mut filename = "[No Name]".to_string();
@@ -250,13 +271,23 @@ impl Editor {
             filename = name.clone();
             filename.truncate(20);
         }
-            
+
         status = format!("{} - {} lines", filename, self.document.len());
 
+        let line_indicator = format!(
+            "{}/{}",
+            self.position.y.saturating_add(1),
+            self.document.len()
+        );
+
+        let len = status.len() + line_indicator.len();
+
         // fill the status bar if its content is shorter than screen
-        if width > status.len() {
-            status.push_str(&" ".repeat(width - status.len()));
+        if width > len {
+            status.push_str(&" ".repeat(width - len));
         }
+
+        status = format!("{status}{line_indicator}");
         status.truncate(width);
 
         Terminal::set_bg_color(STATUS_BG_COLOR);
@@ -270,6 +301,16 @@ impl Editor {
 
     fn draw_message_bar(&self) {
         Terminal::clear_current_line();
+        let msg = &self.status_message;
+        // editor will show status message only for 5 seconds
+        if msg.time.elapsed() < Duration::from_secs(5) {
+            // we must clone it because we want to truncate the text
+            // when the message is showed on screen
+            // but we don't want to change the text in the data structure
+            let mut text = msg.text.clone();
+            text.truncate(self.terminal.width() as usize);
+            print!("{text}\r");
+        }
     }
 }
 
