@@ -1,4 +1,9 @@
-use std::{env, error::Error, io, time::{Instant, Duration}};
+use std::{
+    env,
+    error::Error,
+    io,
+    time::{Duration, Instant},
+};
 
 use termion::{color, event::Key};
 
@@ -126,6 +131,17 @@ impl Editor {
         match key {
             Key::Ctrl('q') => {
                 self.stop = true;
+            }
+            Key::Char(c) => {
+                self.document.insert(&self.position, c);
+                self.move_cursor(Key::Right);
+            }
+            Key::Delete => self.document.delete(&self.position),
+            Key::Backspace => {
+                if self.position.x > 0 || self.position.y > 0 {
+                    self.move_cursor(Key::Left);
+                    self.document.delete(&self.position);
+                }
             }
             Key::Up
             | Key::Down

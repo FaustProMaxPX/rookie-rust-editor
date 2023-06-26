@@ -1,5 +1,6 @@
 use unicode_segmentation::UnicodeSegmentation;
 
+#[derive(Default)]
 pub struct Row {
     content: String,
     // avoid repeating calculate the length
@@ -51,5 +52,34 @@ impl Row {
 
     fn update_len(&mut self) {
         self.len = self.content[..].graphemes(true).count();
+    }
+
+    pub fn insert(&mut self, at: usize, c: char) {
+        // if we need to append a char, just invoke `String::push`
+        if at >= self.len() {
+            self.content.push(c);
+        } else {
+            // if we need to insert a char into the middle of content
+            // split the content at the position `at`
+            // and then push the char to the end of front part
+            // the combine the new string with another part
+            let mut res: String = self.content[..].graphemes(true).take(at).collect();
+            let remainder: String = self.content[..].graphemes(true).skip(at).collect();
+            res.push(c);
+            res.push_str(&remainder);
+            self.content = res;
+        }
+        self.update_len();
+    }
+
+    pub fn delete(&mut self, at: usize) {
+        if at >= self.len() {
+            return;
+        }
+        let mut res: String = self.content[..].graphemes(true).take(at).collect();
+        let remain: String = self.content[..].graphemes(true).skip(at + 1).collect();
+        res.push_str(&remain);
+        self.content = res;
+        self.update_len();
     }
 }

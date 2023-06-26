@@ -1,6 +1,6 @@
 use std::{fs, io};
 
-use crate::Row;
+use crate::{Row, Position};
 
 /// we need a structure to represent the document the user is editing
 /// and a vector of row should be included
@@ -31,5 +31,24 @@ impl Document {
 
     pub fn len(&self) -> usize {
         self.rows.len()
+    }
+
+    pub fn insert(&mut self, at: &Position, c: char) {
+        if at.y == self.len() {
+            let mut row = Row::default();
+            row.insert(0, c);
+            self.rows.push(row);
+        } else if at.y < self.len() {
+            let row = self.rows.get_mut(at.y).unwrap();
+            row.insert(at.x, c);
+        }
+    }
+
+    pub fn delete(&mut self, at: &Position) {
+        if at.y >= self.len() {
+            return;
+        }
+        let row = self.rows.get_mut(at.y).unwrap();
+        row.delete(at.x);
     }
 }
