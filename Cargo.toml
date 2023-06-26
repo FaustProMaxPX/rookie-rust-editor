@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 termion = "1" # the library for interacting with terminal
+unicode-segmentation = "1.8.0" # the library for manipulating unicode
