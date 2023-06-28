@@ -1,8 +1,9 @@
 use std::{
     env,
     error::Error,
+    fmt::format,
     io,
-    time::{Duration, Instant}, fmt::format,
+    time::{Duration, Instant},
 };
 
 use termion::{color, event::Key};
@@ -10,6 +11,8 @@ use termion::{color, event::Key};
 use crate::{row, Document, Terminal};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+const QUIT_TIMES: u8 = 1;
 
 const STATUS_FG_COLOR: color::Rgb = color::Rgb(63, 63, 63);
 const STATUS_BG_COLOR: color::Rgb = color::Rgb(239, 239, 239);
@@ -49,14 +52,15 @@ pub struct Editor {
     // keep track of what row of the file the user is currently scrolled to
     offset: Position,
     status_message: StatusMessage,
+    // confirmation of quit when the user presses CTRL-Q and there are some changes have not been saved
+    quit_times: u8,
 }
 
 impl Editor {
     pub fn new() -> Self {
         let args: Vec<String> = env::args().collect();
         let mut init_status = String::from("HELP: CTRL-Q quit | CTRL-S save");
-        let document = if args.len() > 1 {
-            let filename = &args[1];
+        let document = if let Some(filename) = args.get(1) {
             if let Ok(doc) = Document::open(filename) {
                 doc
             } else {
@@ -73,6 +77,7 @@ impl Editor {
             document,
             offset: Position::default(),
             status_message: StatusMessage::from(init_status),
+            quit_times: QUIT_TIMES,
         }
     }
 
@@ -95,7 +100,7 @@ impl Editor {
     pub fn draw_row(&self, row: &row::Row) {
         let width = self.terminal.width() as usize;
         let start = self.offset.x;
-        let end = self.offset.x + width;
+        let end = self.offset.x.saturating_add(width);
         let row = row.render(start, end);
         println!("{row}\r");
     }
@@ -107,7 +112,10 @@ impl Editor {
             Terminal::clear_current_line();
             // if there are some contents in current row, render it
             // if not, just render the ~ or welcome message
-            if let Some(row) = self.document.row(terminal_row as usize + self.offset.y) {
+            if let Some(row) = self
+                .document
+                .row(self.offset.y.saturating_add(terminal_row as usize))
+            {
                 self.draw_row(row);
             } else if terminal_row == height / 3 && self.document.is_empty() {
                 self.draw_welcome_message();
@@ -136,6 +144,14 @@ impl Editor {
         let key = Terminal::read_key()?;
         match key {
             Key::Ctrl('q') => {
+                if self.quit_times > 0 && self.document.is_dirty() {
+                    self.status_message = StatusMessage::from(
+                        "WARNING! File has unsaved changes. Press CTRL-Q again to quit."
+                            .to_string(),
+                    );
+                    self.quit_times -= 1;
+                    return Ok(());
+                }
                 self.stop = true;
             }
             Key::Ctrl('s') => self.save(),
@@ -165,6 +181,11 @@ impl Editor {
             }
         }
         self.scroll();
+        // if this code can be executed, that means user doesn't choose to quit
+        if self.quit_times < QUIT_TIMES {
+            self.quit_times = QUIT_TIMES;
+            self.status_message = "".into();
+        }
         Ok(())
     }
 
@@ -208,7 +229,7 @@ impl Editor {
             }
             self.document.filename = new_name;
         }
-        
+
         if self.document.save().is_ok() {
             self.status_message = "File saved successfully".into();
         } else {
@@ -254,14 +275,14 @@ impl Editor {
             }
             Key::PageUp => {
                 y = if y > terminal_height {
-                    y - terminal_height
+                    y.saturating_sub(terminal_height)
                 } else {
                     0
                 }
             }
             Key::PageDown => {
                 y = if y.saturating_add(terminal_height) < height {
-                    y + terminal_height
+                    y.saturating_add(terminal_height)
                 } else {
                     height
                 }
@@ -337,25 +358,37 @@ impl Editor {
     fn draw_status_bar(&self) {
         let mut status;
         let width = self.terminal.width() as usize;
+
+        let modified_indicator = if self.document.is_dirty() {
+            " (modified)"
+        } else {
+            ""
+        };
+
         let mut filename = "[No Name]".to_string();
         if let Some(name) = &self.document.filename {
             filename = name.clone();
             filename.truncate(20);
         }
 
-        status = format!("{} - {} lines", filename, self.document.len());
+        status = format!(
+            "{} - {} lines{}",
+            filename,
+            self.document.len(),
+            modified_indicator
+        );
 
         let line_indicator = format!(
             "{}/{}",
             self.position.y.saturating_add(1),
             self.document.len()
         );
-
+        #[allow(clippy::integer_arithmetic)]
         let len = status.len() + line_indicator.len();
 
         // fill the status bar if its content is shorter than screen
         if width > len {
-            status.push_str(&" ".repeat(width - len));
+            status.push_str(&" ".repeat(width.saturating_sub(len)));
         }
 
         status = format!("{status}{line_indicator}");
