@@ -28,6 +28,11 @@ impl Row {
         }
         result
     }
+
+    pub fn append(&mut self, row: &Row) {
+        self.content = format!("{}{}", self.content, row.content);
+        self.update_len();
+    }
 }
 
 impl From<&str> for Row {
@@ -81,5 +86,17 @@ impl Row {
         res.push_str(&remain);
         self.content = res;
         self.update_len();
+    }
+
+    pub fn split(&mut self, at: usize) -> Self {
+        let begin = self.content[..].graphemes(true).take(at).collect();
+        let remain: String = self.content[..].graphemes(true).skip(at).collect();
+        self.content = begin;
+        self.update_len();
+        Self::from(&remain[..])
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        self.content.as_bytes()
     }
 }

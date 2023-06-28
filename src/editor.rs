@@ -2,7 +2,7 @@ use std::{
     env,
     error::Error,
     io,
-    time::{Duration, Instant},
+    time::{Duration, Instant}, fmt::format,
 };
 
 use termion::{color, event::Key};
@@ -34,6 +34,12 @@ impl StatusMessage {
     }
 }
 
+impl From<&str> for StatusMessage {
+    fn from(value: &str) -> Self {
+        Self::from(value.to_string())
+    }
+}
+
 pub struct Editor {
     stop: bool,
     terminal: Terminal,
@@ -48,7 +54,7 @@ pub struct Editor {
 impl Editor {
     pub fn new() -> Self {
         let args: Vec<String> = env::args().collect();
-        let mut init_status = String::from("HELP: CTRL-Q quit");
+        let mut init_status = String::from("HELP: CTRL-Q quit | CTRL-S save");
         let document = if args.len() > 1 {
             let filename = &args[1];
             if let Ok(doc) = Document::open(filename) {
@@ -132,6 +138,7 @@ impl Editor {
             Key::Ctrl('q') => {
                 self.stop = true;
             }
+            Key::Ctrl('s') => self.save(),
             Key::Char(c) => {
                 self.document.insert(&self.position, c);
                 self.move_cursor(Key::Right);
@@ -159,6 +166,54 @@ impl Editor {
         }
         self.scroll();
         Ok(())
+    }
+
+    fn prompt(&mut self, prompt: &str) -> Result<Option<String>, io::Error> {
+        let mut result = String::new();
+        loop {
+            self.status_message = StatusMessage::from(format!("{prompt}{result}"));
+            self.refresh_screen()?;
+            match Terminal::read_key()? {
+                Key::Backspace => {
+                    if !result.is_empty() {
+                        result.truncate(result.len() - 1);
+                    }
+                }
+                Key::Char('\n') => break,
+                Key::Char(c) => {
+                    if !c.is_control() {
+                        result.push(c);
+                    }
+                }
+                Key::Esc => {
+                    result.truncate(0);
+                    break;
+                }
+                _ => (),
+            }
+        }
+        self.status_message = "".into();
+        if result.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(result))
+    }
+
+    fn save(&mut self) {
+        if self.document.filename.is_none() {
+            let new_name = self.prompt("Save as: ").unwrap_or(None);
+            if new_name.is_none() {
+                self.status_message = "Save aborted".into();
+                return;
+            }
+            self.document.filename = new_name;
+        }
+        
+        if self.document.save().is_ok() {
+            self.status_message = "File saved successfully".into();
+        } else {
+            self.status_message = "Err: writing file failed".into();
+        }
     }
 
     fn move_cursor(&mut self, key: Key) {
