@@ -1,7 +1,6 @@
 use std::{
     env,
     error::Error,
-    fmt::format,
     io,
     time::{Duration, Instant},
 };
@@ -17,7 +16,7 @@ const QUIT_TIMES: u8 = 1;
 const STATUS_FG_COLOR: color::Rgb = color::Rgb(63, 63, 63);
 const STATUS_BG_COLOR: color::Rgb = color::Rgb(239, 239, 239);
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Position {
     pub x: usize,
     pub y: usize,
@@ -59,7 +58,7 @@ pub struct Editor {
 impl Editor {
     pub fn new() -> Self {
         let args: Vec<String> = env::args().collect();
-        let mut init_status = String::from("HELP: CTRL-Q quit | CTRL-S save");
+        let mut init_status = String::from("HELP: CTRL-Q quit | CTRL-S save | CTRL-F search");
         let document = if let Some(filename) = args.get(1) {
             if let Ok(doc) = Document::open(filename) {
                 doc
@@ -155,6 +154,7 @@ impl Editor {
                 self.stop = true;
             }
             Key::Ctrl('s') => self.save(),
+            Key::Ctrl('f') => self.search(),
             Key::Char(c) => {
                 self.document.insert(&self.position, c);
                 self.move_cursor(Key::Right);
@@ -189,12 +189,17 @@ impl Editor {
         Ok(())
     }
 
-    fn prompt(&mut self, prompt: &str) -> Result<Option<String>, io::Error> {
+    /// Prompt the user for input. `f` is a closure that will be executed when the user presses a key
+    fn prompt<F>(&mut self, prompt: &str, f: F) -> Result<Option<String>, io::Error>
+    where
+        F: Fn(&mut Self, Key, &String),
+    {
         let mut result = String::new();
         loop {
             self.status_message = StatusMessage::from(format!("{prompt}{result}"));
             self.refresh_screen()?;
-            match Terminal::read_key()? {
+            let key = Terminal::read_key()?;
+            match key {
                 Key::Backspace => {
                     if !result.is_empty() {
                         result.truncate(result.len() - 1);
@@ -212,6 +217,7 @@ impl Editor {
                 }
                 _ => (),
             }
+            f(self, key, &result);
         }
         self.status_message = "".into();
         if result.is_empty() {
@@ -222,7 +228,7 @@ impl Editor {
 
     fn save(&mut self) {
         if self.document.filename.is_none() {
-            let new_name = self.prompt("Save as: ").unwrap_or(None);
+            let new_name = self.prompt("Save as: ", |_, _, _| {}).unwrap_or(None);
             if new_name.is_none() {
                 self.status_message = "Save aborted".into();
                 return;
@@ -234,6 +240,30 @@ impl Editor {
             self.status_message = "File saved successfully".into();
         } else {
             self.status_message = "Err: writing file failed".into();
+        }
+    }
+
+    fn search(&mut self) {
+        // save the old position so that we can go back to original position if user cancels searching
+        let old_position = self.position.clone();
+        // incremental search
+        if let Some(query) = self
+            .prompt("Search: ", |editor, _, query| {
+                if let Some(position) = editor.document.find(query) {
+                    editor.position = position;
+                    editor.scroll();
+                }
+            })
+            .unwrap_or(None)
+        {
+            if let Some(position) = self.document.find(&query[..]) {
+                self.position = position;
+            } else {
+                self.status_message = format!("{query} is not found").as_str().into();
+            }
+        } else {
+            self.position = old_position;
+            self.scroll();
         }
     }
 

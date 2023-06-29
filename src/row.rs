@@ -120,4 +120,19 @@ impl Row {
     pub fn as_bytes(&self) -> &[u8] {
         self.content.as_bytes()
     }
+
+    pub fn find(&self, query: &str) -> Option<usize> {
+        // find the first occurence by string api
+        let match_index = self.content.find(query);
+        // but the byte index may not equal to grapheme index
+        // so we should convert it
+        if let Some(match_index) = match_index {
+            for (g, (byte_index, _)) in self.content[..].grapheme_indices(true).enumerate() {
+                if byte_index == match_index {
+                    return Some(g);
+                }
+            }
+        }
+        None
+    }
 }

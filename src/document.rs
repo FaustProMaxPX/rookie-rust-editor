@@ -1,6 +1,6 @@
 use std::{fs, io::{self, Error, Write}};
 
-use crate::{Position, Row};
+use crate::{Position, Row, row};
 
 /// we need a structure to represent the document the user is editing
 /// and a vector of row should be included
@@ -110,5 +110,14 @@ impl Document {
     
     pub fn is_dirty(&self) -> bool {
         self.dirty
+    }
+
+    pub fn find(&self, query: &str) -> Option<Position> {
+        for (y, row) in self.rows.iter().enumerate() {
+            if let Some(x) = row.find(query) {
+                return Some(Position { x, y });
+            }
+        }
+        None
     }
 }
