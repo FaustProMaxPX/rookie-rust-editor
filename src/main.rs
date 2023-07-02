@@ -20,6 +20,7 @@ pub use row::Row;
 
 use editor::Editor;
 pub use editor::Position;
+pub use editor::SearchDirection;
 
 fn main() {
     let mut editor = Editor::new();

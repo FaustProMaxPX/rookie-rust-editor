@@ -1,5 +1,7 @@
 use unicode_segmentation::UnicodeSegmentation;
 
+use crate::SearchDirection;
+
 #[derive(Default)]
 pub struct Row {
     content: String,
@@ -121,18 +123,41 @@ impl Row {
         self.content.as_bytes()
     }
 
-    pub fn find(&self, query: &str) -> Option<usize> {
-        // find the first occurence by string api
-        let match_index = self.content.find(query);
-        // but the byte index may not equal to grapheme index
-        // so we should convert it
+    pub fn find(&self, query: &str, at: usize, direction: SearchDirection) -> Option<usize> {
+
+        if at > self.len {
+            return None;
+        }
+
+        let start;
+        let end;
+        if direction == SearchDirection::Forward {
+            start = at;
+            end = self.len;
+        } else {
+            start = 0;
+            end = at;
+        }
+
+        let content: String = self.content[..].graphemes(true).skip(start).take(end - start).collect();
+
+        // find the first occurence by string api, match_index is the index of target's first byte
+        let match_index = if direction == SearchDirection::Forward {
+            content.find(query)
+        } else {
+            content.rfind(query)
+        };
+
+        // TODO: why not search the whole string with a single loop. Current solution iterates through the string for 3 times
         if let Some(match_index) = match_index {
-            for (g, (byte_index, _)) in self.content[..].grapheme_indices(true).enumerate() {
-                if byte_index == match_index {
-                    return Some(g);
+            // we should find the unicode byte corresponding to that byteindex
+            for (g, (byte_index, _)) in content[..].grapheme_indices(true).enumerate() {
+                if match_index == byte_index {
+                    return Some(start + g);
                 }
             }
         }
+
         None
     }
 }
