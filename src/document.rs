@@ -16,10 +16,16 @@ pub struct Document {
 }
 
 impl Document {
-    
     pub fn open(filename: &str) -> Result<Self, io::Error> {
         let contents = fs::read_to_string(filename)?;
-        let rows = contents.lines().map(Row::from).collect();
+        let rows = contents
+            .lines()
+            .map(|line| {
+                let mut row = Row::from(line);
+                row.highlight();
+                row
+            })
+            .collect();
         Ok(Self {
             rows,
             filename: Some(filename.to_string()),
@@ -51,10 +57,12 @@ impl Document {
         if at.y == self.len() {
             let mut row = Row::default();
             row.insert(0, c);
+            row.highlight();
             self.rows.push(row);
         } else {
             let row = &mut self.rows[at.y];
             row.insert(at.x, c);
+            row.highlight();
         }
     }
 
@@ -75,9 +83,11 @@ impl Document {
             let next_row = self.rows.remove(at.y + 1);
             let row = &mut self.rows[at.y];
             row.append(&next_row);
+            row.highlight();
         } else {
             let row = &mut self.rows[at.y];
             row.delete(at.x);
+            row.highlight();
         }
     }
 
@@ -95,7 +105,9 @@ impl Document {
         // we should first split it at current cursor position
         // and the last part become the next new row
         #[allow(clippy::indexing_slicing)]
-        let new_row = self.rows[at.y].split(at.x);
+        let mut new_row = self.rows[at.y].split(at.x);
+        self.rows[at.y].highlight();
+        new_row.highlight();
         #[allow(clippy::integer_arithmetic)]
         self.rows.insert(at.y + 1, new_row);
     }

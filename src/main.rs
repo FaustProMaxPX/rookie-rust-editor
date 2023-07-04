@@ -10,6 +10,7 @@
 mod editor;
 
 mod terminal;
+mod highlighting;
 pub use terminal::Terminal;
 
 mod document;

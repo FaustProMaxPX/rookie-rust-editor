@@ -1,10 +1,13 @@
+use termion::color;
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::SearchDirection;
+use crate::{highlighting::Type, SearchDirection};
 
 #[derive(Default)]
 pub struct Row {
     content: String,
+    // highlighting is controlled by document, `row` just save them
+    highlighting: Vec<Type>,
     // avoid repeating calculate the length
     len: usize,
 }
@@ -17,15 +20,26 @@ impl Row {
 
         // use a library to deal with the length of unicode string
         let mut result = String::new();
-        for g in self.content[..]
+        for (index, g) in self.content[..]
             .graphemes(true)
+            .enumerate()
             .skip(start)
             .take(end - start)
         {
-            if g == "\t" {
-                result.push(' ');
-            } else {
-                result.push_str(g);
+            if let Some(c) = g.chars().next() {
+                // because `highlighting()` is invoked whenever one row is pushed into `rows`
+                // we can find coresponding highlighting type by index
+                let htype = self.highlighting.get(index).unwrap_or(&Type::None);
+                let start_highlighting = format!("{}", color::Fg(htype.to_color()));
+                result.push_str(&start_highlighting);
+                if c == '\t' {
+                    result.push(' ');
+                } else {
+                    result.push(c);
+                }
+                let end_highlighting = format!("{}", color::Fg(color::Reset));
+                result.push_str(&end_highlighting);
+
             }
         }
         result
@@ -35,18 +49,7 @@ impl Row {
         self.content = format!("{}{}", self.content, row.content);
         self.len += row.len;
     }
-}
 
-impl From<&str> for Row {
-    fn from(value: &str) -> Self {
-        Self {
-            content: String::from(value),
-            len: value.graphemes(true).count(),
-        }
-    }
-}
-
-impl Row {
     pub fn len(&self) -> usize {
         self.len
     }
@@ -116,6 +119,7 @@ impl Row {
         Self {
             content: split_res,
             len: split_len,
+            highlighting: Vec::new(),
         }
     }
 
@@ -124,7 +128,6 @@ impl Row {
     }
 
     pub fn find(&self, query: &str, at: usize, direction: SearchDirection) -> Option<usize> {
-
         if at > self.len {
             return None;
         }
@@ -139,7 +142,11 @@ impl Row {
             end = at;
         }
 
-        let content: String = self.content[..].graphemes(true).skip(start).take(end - start).collect();
+        let content: String = self.content[..]
+            .graphemes(true)
+            .skip(start)
+            .take(end - start)
+            .collect();
 
         // find the first occurence by string api, match_index is the index of target's first byte
         let match_index = if direction == SearchDirection::Forward {
@@ -157,7 +164,28 @@ impl Row {
                 }
             }
         }
-
         None
+    }
+
+    pub fn highlight(&mut self) {
+        let mut highlighting = vec![];
+        for c in self.content.chars() {
+            if c.is_ascii_digit() {
+                highlighting.push(Type::Number);
+            } else {
+                highlighting.push(Type::None);
+            }
+        }
+        self.highlighting = highlighting;
+    }
+}
+
+impl From<&str> for Row {
+    fn from(value: &str) -> Self {
+        Self {
+            content: String::from(value),
+            highlighting: Vec::new(),
+            len: value.graphemes(true).count(),
+        }
     }
 }
