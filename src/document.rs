@@ -16,13 +16,14 @@ pub struct Document {
 }
 
 impl Document {
+
     pub fn open(filename: &str) -> Result<Self, io::Error> {
         let contents = fs::read_to_string(filename)?;
         let rows = contents
             .lines()
             .map(|line| {
                 let mut row = Row::from(line);
-                row.highlight();
+                row.highlight(None);
                 row
             })
             .collect();
@@ -33,14 +34,17 @@ impl Document {
         })
     }
 
+    #[must_use]
     pub fn row(&self, index: usize) -> Option<&Row> {
         self.rows.get(index)
     }
 
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.rows.is_empty()
     }
 
+    #[must_use]
     pub fn len(&self) -> usize {
         self.rows.len()
     }
@@ -57,12 +61,12 @@ impl Document {
         if at.y == self.len() {
             let mut row = Row::default();
             row.insert(0, c);
-            row.highlight();
+            row.highlight(None);
             self.rows.push(row);
         } else {
             let row = &mut self.rows[at.y];
             row.insert(at.x, c);
-            row.highlight();
+            row.highlight(None);
         }
     }
 
@@ -83,11 +87,11 @@ impl Document {
             let next_row = self.rows.remove(at.y + 1);
             let row = &mut self.rows[at.y];
             row.append(&next_row);
-            row.highlight();
+            row.highlight(None);
         } else {
             let row = &mut self.rows[at.y];
             row.delete(at.x);
-            row.highlight();
+            row.highlight(None);
         }
     }
 
@@ -106,8 +110,8 @@ impl Document {
         // and the last part become the next new row
         #[allow(clippy::indexing_slicing)]
         let mut new_row = self.rows[at.y].split(at.x);
-        self.rows[at.y].highlight();
-        new_row.highlight();
+        self.rows[at.y].highlight(None);
+        new_row.highlight(None);
         #[allow(clippy::integer_arithmetic)]
         self.rows.insert(at.y + 1, new_row);
     }
@@ -124,12 +128,14 @@ impl Document {
         Ok(())
     }
 
+    #[must_use]
     pub fn is_dirty(&self) -> bool {
         self.dirty
     }
 
     /// find a segment equal to `query`.
     /// at and direction represent the position of start point and the direction of searching
+    #[must_use]
     pub fn find(&self, query: &str, at: &Position, direction: SearchDirection) -> Option<Position> {
         if at.y >= self.rows.len() {
             return None;
@@ -163,5 +169,11 @@ impl Document {
             }
         }
         None
+    }
+
+    pub fn highlight(&mut self, query: Option<&str>) {
+        for row in &mut self.rows {
+            row.highlight(query);
+        }
     }
 }

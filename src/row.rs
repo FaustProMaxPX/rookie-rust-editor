@@ -20,6 +20,10 @@ impl Row {
 
         // use a library to deal with the length of unicode string
         let mut result = String::new();
+        // keep track of current color type
+        // then we don't need to change color whenever ecounter a new character if it is the same
+        let mut cur_color_type = &Type::None;
+
         for (index, g) in self.content[..]
             .graphemes(true)
             .enumerate()
@@ -30,18 +34,22 @@ impl Row {
                 // because `highlighting()` is invoked whenever one row is pushed into `rows`
                 // we can find coresponding highlighting type by index
                 let htype = self.highlighting.get(index).unwrap_or(&Type::None);
-                let start_highlighting = format!("{}", color::Fg(htype.to_color()));
-                result.push_str(&start_highlighting);
+
+                // if encounter a new color type, then we need to change the color
+                if cur_color_type != htype {
+                    cur_color_type = htype;
+                    let start_highlighting = format!("{}", color::Fg(htype.to_color()));
+                    result.push_str(&start_highlighting);
+                }
                 if c == '\t' {
                     result.push(' ');
                 } else {
                     result.push(c);
                 }
-                let end_highlighting = format!("{}", color::Fg(color::Reset));
-                result.push_str(&end_highlighting);
-
             }
         }
+        let end_highlighting = format!("{}", color::Fg(color::Reset));
+        result.push_str(&end_highlighting);
         result
     }
 
@@ -99,6 +107,9 @@ impl Row {
         self.len = length;
     }
 
+    /// Split the content into two parts
+    /// since it will create a new value, so its return value must be used
+    #[must_use]
     pub fn split(&mut self, at: usize) -> Self {
         let mut row = String::new();
         let mut length = 0;
@@ -123,12 +134,14 @@ impl Row {
         }
     }
 
+    #[must_use]
     pub fn as_bytes(&self) -> &[u8] {
         self.content.as_bytes()
     }
 
+    #[must_use]
     pub fn find(&self, query: &str, at: usize, direction: SearchDirection) -> Option<usize> {
-        if at > self.len {
+        if at > self.len || query.is_empty() {
             return None;
         }
 
@@ -167,14 +180,57 @@ impl Row {
         None
     }
 
-    pub fn highlight(&mut self) {
+    pub fn highlight(&mut self, query: Option<&str>) {
         let mut highlighting = vec![];
-        for c in self.content.chars() {
-            if c.is_ascii_digit() {
+
+        let chars: Vec<char> = self.content.chars().collect();
+        let mut matches = vec![];
+        let mut search_index = 0;
+
+        if let Some(query) = query {
+            let query_len = query.graphemes(true).count();
+            while let Some(search_match) = self.find(query, search_index, SearchDirection::Forward)
+            {
+                matches.push(search_match);
+                // add query len to search_index as the next start index
+                // we use checked_add here in that it will return None if the result is out of range
+                if let Some(next_index) = search_match.checked_add(query_len) {
+                    search_index = next_index;
+                } else {
+                    break;
+                }
+            }
+        }
+
+        let mut prev_is_separator = true;
+        // index is the cursor of chars
+        let mut index = 0;
+        while let Some(c) = chars.get(index) {
+            if let Some(query) = query {
+                if matches.contains(&index) {
+                    for _ in query[..].graphemes(true) {
+                        index += 1;
+                        highlighting.push(Type::Match);
+                    }
+                    continue;
+                }
+            }
+
+            let prev_highlighting = if index > 0 {
+                highlighting.get(index - 1).unwrap_or(&Type::None)
+            } else {
+                &Type::None
+            };
+            // TODO: if a character follows the number, the number will still be defined as Type::Number
+            if (c.is_ascii_digit() && (prev_is_separator || prev_highlighting == &Type::Number))
+                || (c == &'.' && prev_highlighting == &Type::Number)
+            {
                 highlighting.push(Type::Number);
             } else {
                 highlighting.push(Type::None);
             }
+            prev_is_separator = c.is_ascii_punctuation() || c.is_ascii_whitespace();
+            index += 1;
         }
         self.highlighting = highlighting;
     }

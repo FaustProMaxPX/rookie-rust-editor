@@ -283,6 +283,7 @@ impl Editor {
                     } else if moved {
                         editor.move_cursor(Key::Left);
                     }
+                    editor.document.highlight(Some(query));
                 },
             )
             .unwrap_or(None);
@@ -290,6 +291,7 @@ impl Editor {
             self.position = old_position;
             self.scroll();
         }
+        self.document.highlight(None);
     }
 
     fn move_cursor(&mut self, key: Key) {
