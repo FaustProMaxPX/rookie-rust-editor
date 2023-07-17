@@ -1,7 +1,7 @@
 use termion::color;
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::{highlighting::Type, SearchDirection};
+use crate::{highlighting::Type, HighlightingOptions, SearchDirection};
 
 #[derive(Default)]
 pub struct Row {
@@ -180,7 +180,7 @@ impl Row {
         None
     }
 
-    pub fn highlight(&mut self, query: Option<&str>) {
+    pub fn highlight(&mut self, query: Option<&str>, hl_opts: HighlightingOptions) {
         let mut highlighting = vec![];
 
         let chars: Vec<char> = self.content.chars().collect();
@@ -222,10 +222,14 @@ impl Row {
                 &Type::None
             };
             // TODO: if a character follows the number, the number will still be defined as Type::Number
-            if (c.is_ascii_digit() && (prev_is_separator || prev_highlighting == &Type::Number))
-                || (c == &'.' && prev_highlighting == &Type::Number)
-            {
-                highlighting.push(Type::Number);
+            if hl_opts.numbers() {
+                if (c.is_ascii_digit() && (prev_is_separator || prev_highlighting == &Type::Number))
+                    || (c == &'.' && prev_highlighting == &Type::Number)
+                {
+                    highlighting.push(Type::Number);
+                } else {
+                    highlighting.push(Type::None);
+                }
             } else {
                 highlighting.push(Type::None);
             }

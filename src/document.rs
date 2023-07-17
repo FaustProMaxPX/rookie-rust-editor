@@ -3,7 +3,7 @@ use std::{
     io::{self, Error, Write},
 };
 
-use crate::{Position, Row, SearchDirection};
+use crate::{FileType, Position, Row, SearchDirection};
 
 /// we need a structure to represent the document the user is editing
 /// and a vector of row should be included
@@ -13,17 +13,18 @@ pub struct Document {
     rows: Vec<Row>,
     pub filename: Option<String>,
     dirty: bool,
+    filetype: FileType,
 }
 
 impl Document {
-
     pub fn open(filename: &str) -> Result<Self, io::Error> {
         let contents = fs::read_to_string(filename)?;
+        let filetype = FileType::from(filename);
         let rows = contents
             .lines()
             .map(|line| {
                 let mut row = Row::from(line);
-                row.highlight(None);
+                row.highlight(None, filetype.highlighting_opts());
                 row
             })
             .collect();
@@ -31,22 +32,8 @@ impl Document {
             rows,
             filename: Some(filename.to_string()),
             dirty: false,
+            filetype,
         })
-    }
-
-    #[must_use]
-    pub fn row(&self, index: usize) -> Option<&Row> {
-        self.rows.get(index)
-    }
-
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.rows.is_empty()
-    }
-
-    #[must_use]
-    pub fn len(&self) -> usize {
-        self.rows.len()
     }
 
     pub fn insert(&mut self, at: &Position, c: char) {
@@ -58,15 +45,16 @@ impl Document {
             self.insert_newline(at);
             return;
         }
+        let opts = self.filetype.highlighting_opts();
         if at.y == self.len() {
             let mut row = Row::default();
             row.insert(0, c);
-            row.highlight(None);
+            row.highlight(None, opts);
             self.rows.push(row);
         } else {
             let row = &mut self.rows[at.y];
             row.insert(at.x, c);
-            row.highlight(None);
+            row.highlight(None, opts);
         }
     }
 
@@ -81,17 +69,19 @@ impl Document {
 
         self.dirty = true;
 
+        let opts = self.filetype.highlighting_opts();
+
         // if the cursor is at the end of line
         // then we should delete the next row, and append it to current line
         if at.x == self.rows[at.y].len() && at.y + 1 < len {
             let next_row = self.rows.remove(at.y + 1);
             let row = &mut self.rows[at.y];
             row.append(&next_row);
-            row.highlight(None);
+            row.highlight(None, opts);
         } else {
             let row = &mut self.rows[at.y];
             row.delete(at.x);
-            row.highlight(None);
+            row.highlight(None, opts);
         }
     }
 
@@ -110,8 +100,9 @@ impl Document {
         // and the last part become the next new row
         #[allow(clippy::indexing_slicing)]
         let mut new_row = self.rows[at.y].split(at.x);
-        self.rows[at.y].highlight(None);
-        new_row.highlight(None);
+        let opts = self.filetype.highlighting_opts();
+        self.rows[at.y].highlight(None, opts);
+        new_row.highlight(None, opts);
         #[allow(clippy::integer_arithmetic)]
         self.rows.insert(at.y + 1, new_row);
     }
@@ -123,14 +114,11 @@ impl Document {
                 file.write_all(row.as_bytes())?;
                 file.write_all(b"\n")?;
             }
+            self.filetype = FileType::from(filename.to_string());
             self.dirty = false;
+            self.highlight(None);
         }
         Ok(())
-    }
-
-    #[must_use]
-    pub fn is_dirty(&self) -> bool {
-        self.dirty
     }
 
     /// find a segment equal to `query`.
@@ -171,9 +159,35 @@ impl Document {
         None
     }
 
+    #[must_use]
+    pub fn row(&self, index: usize) -> Option<&Row> {
+        self.rows.get(index)
+    }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.rows.is_empty()
+    }
+
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.rows.len()
+    }
+
+    #[must_use]
+    pub fn is_dirty(&self) -> bool {
+        self.dirty
+    }
+
+    #[must_use]
+    pub fn file_type(&self) -> String {
+        self.filetype.name()
+    }
+
     pub fn highlight(&mut self, query: Option<&str>) {
+        let opts = self.filetype.highlighting_opts();
         for row in &mut self.rows {
-            row.highlight(query);
+            row.highlight(query, opts);
         }
     }
 }

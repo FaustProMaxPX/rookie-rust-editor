@@ -10,8 +10,13 @@
 mod editor;
 
 mod terminal;
-mod highlighting;
 pub use terminal::Terminal;
+
+mod highlighting;
+
+mod filetype;
+pub use filetype::FileType;
+pub use filetype::HighlightingOptions;
 
 mod document;
 pub use document::Document;
