@@ -205,6 +205,8 @@ impl Row {
         let mut prev_is_separator = true;
         // index is the cursor of chars
         let mut index = 0;
+        let mut in_string = false;
+
         while let Some(c) = chars.get(index) {
             if let Some(query) = query {
                 if matches.contains(&index) {
@@ -221,10 +223,140 @@ impl Row {
             } else {
                 &Type::None
             };
+
+            if hl_opts.characters() && !in_string && *c == '\'' {
+                if let Some(next_char) = chars.get(index + 1) {
+                    let closing_index = if *next_char == '\\' {
+                        index + 3
+                    } else {
+                        index + 2
+                    };
+                    if let Some(closing_char) = chars.get(closing_index) {
+                        if *closing_char == '\'' {
+                            for _ in 0..=closing_index.saturating_sub(index) {
+                                highlighting.push(Type::Character);
+                            }
+                            index = closing_index;
+                        }
+                    }
+                }
+                index += 1;
+                highlighting.push(Type::None);
+                continue;
+            }
+
+            if hl_opts.strings() {
+
+                if *c == '\\' && index < self.len().saturating_sub(1) {
+                    highlighting.push(Type::Escape);
+                    highlighting.push(Type::Escape);
+                    index += 2;
+                    continue;
+                }
+
+                // if this character is in string, push a Type::String
+                // if current character is '"', it means we have been in the end of string
+                if in_string {
+                    highlighting.push(Type::String);
+                    if *c == '"' {
+                        in_string = false;
+                        prev_is_separator = true;
+                    } else {
+                        prev_is_separator = false;
+                    }
+                    index += 1;
+                    // the `continue` is very important
+                    // that means the mutable reference of highlighting here will not be conflicted with previous_highlighting above
+                    continue;
+                } else if prev_is_separator && *c == '"' {
+                    highlighting.push(Type::String);
+                    in_string = true;
+                    prev_is_separator = true;
+                    index += 1;
+                    continue;
+                }
+            }
+
             // TODO: if a character follows the number, the number will still be defined as Type::Number
             if hl_opts.numbers() {
-                if (c.is_ascii_digit() && (prev_is_separator || prev_highlighting == &Type::Number))
-                    || (c == &'.' && prev_highlighting == &Type::Number)
+                if (c.is_ascii_digit() && (prev_is_separator || *prev_highlighting == Type::Number))
+                    || (*c == '.' && *prev_highlighting == Type::Number)
+                {
+                    highlighting.push(Type::Number);
+                } else {
+                    highlighting.push(Type::None);
+                }
+            } else {
+                highlighting.push(Type::None);
+            }
+            prev_is_separator = c.is_ascii_punctuation() || c.is_ascii_whitespace();
+            index += 1;
+
+            
+        }
+
+        self.highlighting = highlighting;
+    }
+
+    pub fn highlight2(&mut self, opts: HighlightingOptions, word: Option<&str>) {
+        let mut highlighting = Vec::new();
+        let chars: Vec<char> = self.content.chars().collect();
+        let mut matches = Vec::new();
+        let mut search_index = 0;
+
+        if let Some(word) = word {
+            while let Some(search_match) = self.find(word, search_index, SearchDirection::Forward) {
+                matches.push(search_match);
+                if let Some(next_index) = search_match.checked_add(word[..].graphemes(true).count())
+                {
+                    search_index = next_index;
+                } else {
+                    break;
+                }
+            }
+        }
+        let mut prev_is_separator = true;
+        let mut in_string = false;
+        let mut index = 0;
+        while let Some(c) = chars.get(index) {
+            if let Some(word) = word {
+                if matches.contains(&index) {
+                    for _ in word[..].graphemes(true) {
+                        index += 1;
+                        highlighting.push(Type::Match);
+                    }
+                    continue;
+                }
+            }
+            let previous_highlight = if index > 0 {
+                #[allow(clippy::integer_arithmetic)]
+                highlighting.get(index - 1).unwrap_or(&Type::None)
+            } else {
+                &Type::None
+            };
+            if opts.strings() {
+                if in_string {
+                    highlighting.push(Type::String);
+                    if *c == '"' {
+                        in_string = false;
+                        prev_is_separator = true;
+                    } else {
+                        prev_is_separator = false;
+                    }
+                    index += 1;
+                    continue;
+                } else if prev_is_separator && *c == '"' {
+                    highlighting.push(Type::String);
+                    in_string = true;
+                    prev_is_separator = true;
+                    index += 1;
+                    continue;
+                }
+            }
+            if opts.numbers() {
+                if (c.is_ascii_digit()
+                    && (prev_is_separator || previous_highlight == &Type::Number))
+                    || (c == &'.' && previous_highlight == &Type::Number)
                 {
                     highlighting.push(Type::Number);
                 } else {
@@ -236,6 +368,7 @@ impl Row {
             prev_is_separator = c.is_ascii_punctuation() || c.is_ascii_whitespace();
             index += 1;
         }
+
         self.highlighting = highlighting;
     }
 }
