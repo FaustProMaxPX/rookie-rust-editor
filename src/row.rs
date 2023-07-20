@@ -184,23 +184,6 @@ impl Row {
         let mut highlighting = vec![];
 
         let chars: Vec<char> = self.content.chars().collect();
-        let mut matches = vec![];
-        let mut search_index = 0;
-
-        if let Some(query) = query {
-            let query_len = query.graphemes(true).count();
-            while let Some(search_match) = self.find(query, search_index, SearchDirection::Forward)
-            {
-                matches.push(search_match);
-                // add query len to search_index as the next start index
-                // we use checked_add here in that it will return None if the result is out of range
-                if let Some(next_index) = search_match.checked_add(query_len) {
-                    search_index = next_index;
-                } else {
-                    break;
-                }
-            }
-        }
 
         let mut prev_is_separator = true;
         // index is the cursor of chars
@@ -208,16 +191,6 @@ impl Row {
         let mut in_string = false;
 
         while let Some(c) = chars.get(index) {
-            if let Some(query) = query {
-                if matches.contains(&index) {
-                    for _ in query[..].graphemes(true) {
-                        index += 1;
-                        highlighting.push(Type::Match);
-                    }
-                    continue;
-                }
-            }
-
             let prev_highlighting = if index > 0 {
                 highlighting.get(index - 1).unwrap_or(&Type::None)
             } else {
@@ -245,37 +218,7 @@ impl Row {
                 continue;
             }
 
-            if hl_opts.strings() {
-
-                if *c == '\\' && index < self.len().saturating_sub(1) {
-                    highlighting.push(Type::Escape);
-                    highlighting.push(Type::Escape);
-                    index += 2;
-                    continue;
-                }
-
-                // if this character is in string, push a Type::String
-                // if current character is '"', it means we have been in the end of string
-                if in_string {
-                    highlighting.push(Type::String);
-                    if *c == '"' {
-                        in_string = false;
-                        prev_is_separator = true;
-                    } else {
-                        prev_is_separator = false;
-                    }
-                    index += 1;
-                    // the `continue` is very important
-                    // that means the mutable reference of highlighting here will not be conflicted with previous_highlighting above
-                    continue;
-                } else if prev_is_separator && *c == '"' {
-                    highlighting.push(Type::String);
-                    in_string = true;
-                    prev_is_separator = true;
-                    index += 1;
-                    continue;
-                }
-            }
+            if hl_opts.strings() {}
 
             // comments should be put after strings
             // because there may be a '/' in a string
@@ -305,11 +248,98 @@ impl Row {
             }
             prev_is_separator = c.is_ascii_punctuation() || c.is_ascii_whitespace();
             index += 1;
-
-            
         }
 
         self.highlighting = highlighting;
+    }
+
+    fn highlight_match(&mut self, query: Option<&str>) {
+        let mut search_index = 0;
+
+        if let Some(query) = query {
+            if query.is_empty() {
+                return;
+            }
+            let query_len = query.graphemes(true).count();
+            while let Some(search_match) = self.find(query, search_index, SearchDirection::Forward)
+            {
+                // add query len to search_index as the next start index
+                // we use checked_add here in that it will return None if the result is out of range
+                if let Some(next_index) = search_match.checked_add(query_len) {
+                    for i in search_index..next_index {
+                        self.highlighting[i] = Type::Match;
+                    }
+                    search_index = next_index;
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+
+    fn highlight_character(
+        &mut self,
+        chars: &Vec<char>,
+        hl_opts: HighlightingOptions,
+        index: &mut usize,
+    ) -> bool {
+        if !hl_opts.characters() {
+            return false;
+        }
+        if let Some(c) = chars.get(*index) {
+            if *c != '\'' {
+                return false;
+            }
+        }
+        let start_index = *index;
+        if let Some(next_char) = chars.get(*index + 1) {
+            if *next_char == '\\' {
+                *index += 4;
+            } else {
+                *index += 3;
+            }
+            for _ in start_index..*index {
+                self.highlighting.push(Type::Character);
+            }
+            return true
+        }
+        false
+    }
+
+    fn highlight_strings(
+        &mut self,
+        chars: &Vec<char>,
+        hl_opts: HighlightingOptions,
+        index: &mut usize,
+    ) -> bool {
+        if !hl_opts.strings() {
+            return false;
+        }
+
+        // if this character is in string, push a Type::String
+        // if current character is '"', it means we have been in the end of string
+        if let Some(c) = chars.get(*index) {
+            if *c != '"' {
+                return false;
+            }
+        }
+        *index += 1;
+        self.highlighting.push(Type::String);
+        while let Some(ch) = chars.get(*index) {
+            if *ch == '"' {
+                self.highlighting.push(Type::String);
+                *index += 1;
+                return true;
+            } else if *ch == '\\' {
+                self.highlighting.push(Type::Escape);
+                self.highlighting.push(Type::Escape);
+                *index += 2;
+            } else {
+                self.highlighting.push(Type::String);
+                *index += 1;
+            }
+        }
+        false
     }
 }
 
@@ -320,5 +350,72 @@ impl From<&str> for Row {
             highlighting: Vec::new(),
             len: value.graphemes(true).count(),
         }
+    }
+}
+
+mod row_tests {
+    use crate::FileType;
+
+    use super::*;
+
+    #[test]
+    fn highlight_strings_test() {
+        let mut row = Row::from("\"h\\nello\"");
+        let hl_opts = FileType::from("a.rs").highlighting_opts();
+        let chars: Vec<char> = row.content.chars().collect();
+        let mut index = 0;
+        row.highlight_strings(&chars, hl_opts, &mut index);
+        let mut expected = Vec::new();
+        for i in 0..9 {
+            if i == 2 || i == 3 {
+                expected.push(Type::Escape);
+                continue;
+            }
+            expected.push(Type::String);
+        }
+        assert_eq!(
+            row.highlighting, expected,
+            "res: {:#?}, expected: {:#?}",
+            row.highlighting, expected
+        );
+    }
+
+    #[test]
+    fn highlight_character_test() {
+        let (mut row, hl_opts) = create_row("'1'");
+        let mut index = 0;
+        let chars = row.content.chars().collect();
+        row.highlight_character(&chars, hl_opts, &mut index);
+        let mut expected = Vec::new();
+        for _i in 0..3 {
+            expected.push(Type::Character);
+        }
+        assert_eq!(
+            row.highlighting, expected,
+            "res: {:#?}, expected: {:#?}",
+            row.highlighting, expected
+        );
+        assert_eq!(index, 3);
+
+        let (mut row, hl_opts) = create_row("'\\n'");
+        let mut index = 0;
+        let chs = row.content.chars().collect();
+        row.highlight_character(&chs, hl_opts, &mut index);
+        expected.clear();
+        for _ in 0..4 {
+            expected.push(Type::Character);
+        }
+        assert_eq!(
+            row.highlighting, expected,
+            "res: {:#?}, expected: {:#?}",
+            row.highlighting, expected
+        );
+        assert_eq!(index, 4);
+    }
+
+    fn create_row(string: &str) -> (Row, HighlightingOptions) {
+        let row = Row::from(string);
+        let hl_opts = FileType::from("a.rs").highlighting_opts();
+        (row, hl_opts)
     }
 }
