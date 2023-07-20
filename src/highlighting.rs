@@ -7,7 +7,8 @@ pub enum Type {
     Match,
     String,
     Escape,
-    Character
+    Character,
+    Comment,
 }
 
 impl Type {
@@ -18,6 +19,7 @@ impl Type {
             Type::String => color::Rgb(211, 54, 130),
             Type::Escape => color::Rgb(255, 255, 0),
             Type::Character => color::Rgb(108, 113, 196),
+            Type::Comment => color::Rgb(128,128,128),
             Type::None => color::Rgb(255, 255, 255),
         }
     }

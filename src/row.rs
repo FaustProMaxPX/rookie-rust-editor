@@ -277,6 +277,20 @@ impl Row {
                 }
             }
 
+            // comments should be put after strings
+            // because there may be a '/' in a string
+            // it should not be treated as a comment
+            if hl_opts.comments() && *c == '/' {
+                if let Some(next_char) = chars.get(index + 1) {
+                    if *next_char == '/' {
+                        for _ in index..chars.len() {
+                            highlighting.push(Type::Comment);
+                        }
+                    }
+                    break;
+                }
+            }
+
             // TODO: if a character follows the number, the number will still be defined as Type::Number
             if hl_opts.numbers() {
                 if (c.is_ascii_digit() && (prev_is_separator || *prev_highlighting == Type::Number))
@@ -293,80 +307,6 @@ impl Row {
             index += 1;
 
             
-        }
-
-        self.highlighting = highlighting;
-    }
-
-    pub fn highlight2(&mut self, opts: HighlightingOptions, word: Option<&str>) {
-        let mut highlighting = Vec::new();
-        let chars: Vec<char> = self.content.chars().collect();
-        let mut matches = Vec::new();
-        let mut search_index = 0;
-
-        if let Some(word) = word {
-            while let Some(search_match) = self.find(word, search_index, SearchDirection::Forward) {
-                matches.push(search_match);
-                if let Some(next_index) = search_match.checked_add(word[..].graphemes(true).count())
-                {
-                    search_index = next_index;
-                } else {
-                    break;
-                }
-            }
-        }
-        let mut prev_is_separator = true;
-        let mut in_string = false;
-        let mut index = 0;
-        while let Some(c) = chars.get(index) {
-            if let Some(word) = word {
-                if matches.contains(&index) {
-                    for _ in word[..].graphemes(true) {
-                        index += 1;
-                        highlighting.push(Type::Match);
-                    }
-                    continue;
-                }
-            }
-            let previous_highlight = if index > 0 {
-                #[allow(clippy::integer_arithmetic)]
-                highlighting.get(index - 1).unwrap_or(&Type::None)
-            } else {
-                &Type::None
-            };
-            if opts.strings() {
-                if in_string {
-                    highlighting.push(Type::String);
-                    if *c == '"' {
-                        in_string = false;
-                        prev_is_separator = true;
-                    } else {
-                        prev_is_separator = false;
-                    }
-                    index += 1;
-                    continue;
-                } else if prev_is_separator && *c == '"' {
-                    highlighting.push(Type::String);
-                    in_string = true;
-                    prev_is_separator = true;
-                    index += 1;
-                    continue;
-                }
-            }
-            if opts.numbers() {
-                if (c.is_ascii_digit()
-                    && (prev_is_separator || previous_highlight == &Type::Number))
-                    || (c == &'.' && previous_highlight == &Type::Number)
-                {
-                    highlighting.push(Type::Number);
-                } else {
-                    highlighting.push(Type::None);
-                }
-            } else {
-                highlighting.push(Type::None);
-            }
-            prev_is_separator = c.is_ascii_punctuation() || c.is_ascii_whitespace();
-            index += 1;
         }
 
         self.highlighting = highlighting;
