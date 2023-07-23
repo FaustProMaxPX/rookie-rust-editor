@@ -180,7 +180,7 @@ impl Row {
         None
     }
 
-    pub fn highlight(&mut self, query: Option<&str>, hl_opts: HighlightingOptions) {
+    pub fn highlight(&mut self, query: Option<&str>, hl_opts: &HighlightingOptions) {
         self.highlighting.clear();
         let chars: Vec<char> = self.content.chars().collect();
         let mut index = 0;
@@ -201,7 +201,7 @@ impl Row {
     fn highlight_number(
         &mut self,
         chars: &Vec<char>,
-        hl_opts: HighlightingOptions,
+        hl_opts: &HighlightingOptions,
         index: &mut usize,
     ) -> bool {
         if !hl_opts.numbers() {
@@ -225,7 +225,7 @@ impl Row {
     fn highlight_comment(
         &mut self,
         chars: &Vec<char>,
-        hl_opts: HighlightingOptions,
+        hl_opts: &HighlightingOptions,
         index: &mut usize,
     ) -> bool {
         if !hl_opts.comments() || *index != 0 || chars.get(*index).is_none() {
@@ -272,7 +272,7 @@ impl Row {
     fn highlight_character(
         &mut self,
         chars: &Vec<char>,
-        hl_opts: HighlightingOptions,
+        hl_opts: &HighlightingOptions,
         index: &mut usize,
     ) -> bool {
         if !hl_opts.characters() {
@@ -301,7 +301,7 @@ impl Row {
     fn highlight_strings(
         &mut self,
         chars: &Vec<char>,
-        hl_opts: HighlightingOptions,
+        hl_opts: &HighlightingOptions,
         index: &mut usize,
     ) -> bool {
         if !hl_opts.strings() {
@@ -353,10 +353,10 @@ mod row_tests {
     #[test]
     fn highlight_strings_test() {
         let mut row = Row::from("\"h\\nello\"");
-        let hl_opts = FileType::from("a.rs").highlighting_opts();
+        let hl_opts = FileType::from("a.rs").highlighting_opts().clone();
         let chars: Vec<char> = row.content.chars().collect();
         let mut index = 0;
-        row.highlight_strings(&chars, hl_opts, &mut index);
+        row.highlight_strings(&chars, &hl_opts, &mut index);
         let mut expected = Vec::new();
         for i in 0..9 {
             if i == 2 || i == 3 {
@@ -377,7 +377,7 @@ mod row_tests {
         let (mut row, hl_opts) = create_row("'1'");
         let mut index = 0;
         let chars = row.content.chars().collect();
-        row.highlight_character(&chars, hl_opts, &mut index);
+        row.highlight_character(&chars, &hl_opts, &mut index);
         let mut expected = Vec::new();
         for _i in 0..3 {
             expected.push(Type::Character);
@@ -392,7 +392,7 @@ mod row_tests {
         let (mut row, hl_opts) = create_row("'\\n'");
         let mut index = 0;
         let chs = row.content.chars().collect();
-        row.highlight_character(&chs, hl_opts, &mut index);
+        row.highlight_character(&chs, &hl_opts, &mut index);
         expected.clear();
         for _ in 0..4 {
             expected.push(Type::Character);
@@ -409,7 +409,7 @@ mod row_tests {
     fn highlight_comment_test() {
         let (mut row, hl_opts) = create_row("// this is a comment");
         let mut index = 0;
-        row.highlight_comment(&row.content.chars().collect(), hl_opts, &mut index);
+        row.highlight_comment(&row.content.chars().collect(), &hl_opts, &mut index);
         let mut expected = Vec::new();
         for _i in 0..20 {
             expected.push(Type::Comment);
@@ -423,10 +423,21 @@ mod row_tests {
     }
 
     #[test]
+    fn highlight_match_test() {
+        let (mut row, _hl_opts) = create_row("111");
+        for _ in 0..3 {
+            row.highlighting.push(Type::None);
+        }
+        row.highlight_match(Some("1"));
+        let expected = vec![Type::Match, Type::Match, Type::Match];
+        assert_eq!(row.highlighting, expected, "res: {:#?}, expected: {:#?}", row.highlighting, expected);
+    }
+
+    #[test]
     fn highlight_number_test() {
         let (mut row, hl_opts) = create_row("1");
         let mut index = 0;
-        row.highlight_number(&row.content.chars().collect(), hl_opts, &mut index);
+        row.highlight_number(&row.content.chars().collect(), &hl_opts, &mut index);
         // let mut expected = Vec::new();
 
         assert_eq!(
@@ -441,7 +452,7 @@ mod row_tests {
         index = 0;
         row.content = "1.0".to_string();
         row.highlighting.clear();
-        row.highlight_number(&row.content.chars().collect(), hl_opts, &mut index);
+        row.highlight_number(&row.content.chars().collect(), &hl_opts, &mut index);
         assert_eq!(
             row.highlighting,
             vec![Type::Number, Type::Number, Type::Number],
@@ -453,12 +464,12 @@ mod row_tests {
         index = 0;
         row.content = "\"1.0\"".to_string();
         row.highlighting.clear();
-        assert!(!row.highlight_number(&row.content.chars().collect(), hl_opts, &mut index));
+        assert!(!row.highlight_number(&row.content.chars().collect(), &hl_opts, &mut index));
     }
 
     fn create_row(string: &str) -> (Row, HighlightingOptions) {
         let row = Row::from(string);
-        let hl_opts = FileType::from("a.rs").highlighting_opts();
+        let hl_opts = FileType::from("a.rs").highlighting_opts().clone();
         (row, hl_opts)
     }
 }

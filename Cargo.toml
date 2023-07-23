@@ -8,3 +8,4 @@ edition = "2021"
 [dependencies]
 termion = "1" # the library for interacting with terminal
 unicode-segmentation = "1.8.0" # the library for manipulating unicode
+serde_json = "1.0.103" # the library for serializing and deserializing json

@@ -1,16 +1,20 @@
+use std::fs::File;
+
 pub struct FileType {
     name: String,
     hl_opts: HighlightingOptions,
 }
 
 /// this structure will hold a series of bool value representing the highlighting options
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone, Debug)]
 pub struct HighlightingOptions {
     // whether numbers need to be highlighted
     numbers: bool,
     strings: bool,
     characters: bool,
     comments: bool,
+    primary_keys: Vec<String>,
+    secondary_keys: Vec<String>,
 }
 
 impl FileType {
@@ -20,8 +24,8 @@ impl FileType {
     }
 
     #[must_use]
-    pub fn highlighting_opts(&self) -> HighlightingOptions {
-        self.hl_opts
+    pub fn highlighting_opts(&self) -> &HighlightingOptions {
+        &self.hl_opts
     }
 }
 
@@ -40,6 +44,22 @@ impl From<String> for FileType {
             .extension()
             .map_or(false, |ext| ext.eq_ignore_ascii_case("rs"))
         {
+            let keywords: serde_json::Value =
+                serde_json::from_reader(File::open("src/highlightkeys/rust.json").unwrap())
+                    .unwrap();
+            let mut primary_keys = vec![];
+            let mut secondary_keys = vec![];
+            if let Some(arr) = keywords["rs"]["primary_keys"].as_array() {
+                for key in arr.iter() {
+                    primary_keys.push(key.as_str().unwrap().to_string());
+                }
+            };
+            if let Some(arr) = keywords["rs"]["secondary_keys"].as_array() {
+                for key in arr.iter() {
+                    secondary_keys.push(key.as_str().unwrap().to_string());
+                }
+            };
+
             return Self {
                 name: "Rust".to_string(),
                 hl_opts: HighlightingOptions {
@@ -47,6 +67,8 @@ impl From<String> for FileType {
                     strings: true,
                     characters: true,
                     comments: true,
+                    primary_keys,
+                    secondary_keys,
                 },
             };
         }
@@ -78,5 +100,24 @@ impl HighlightingOptions {
 
     pub fn comments(&self) -> bool {
         self.comments
+    }
+
+    pub fn primary_keys(&self) -> &Vec<String> {
+        &self.primary_keys
+    }
+
+    pub fn secondary_keys(&self) -> &Vec<String> {
+        &self.secondary_keys
+    }
+}
+
+mod test {
+    #[warn(unused_imports)]
+    use crate::FileType;
+
+    #[test]
+    fn create_filetype() {
+        let filetype = FileType::from("editor.rs");
+        println!("{:#?}", filetype.highlighting_opts());
     }
 }
