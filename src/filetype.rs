@@ -40,28 +40,33 @@ impl Default for FileType {
 
 impl From<String> for FileType {
     fn from(filename: String) -> Self {
-        if std::path::Path::new(&filename)
-            .extension()
-            .map_or(false, |ext| ext.eq_ignore_ascii_case("rs"))
-        {
-            let keywords: serde_json::Value =
-                serde_json::from_reader(File::open("src/highlightkeys/rust.json").unwrap())
-                    .unwrap();
+
+        if let Some(suffix) = std::path::Path::new(&filename).extension() {
+            if suffix.to_str().is_none() {
+                return FileType::default();
+            }
+            let suffix = suffix.to_str().unwrap();
+            let kw_path = "src/highlightkeys/".to_string() + suffix + ".json";
             let mut primary_keys = vec![];
             let mut secondary_keys = vec![];
-            if let Some(arr) = keywords["rs"]["primary_keys"].as_array() {
-                for key in arr.iter() {
+            let keywords: serde_json::Value =
+                serde_json::from_reader(File::open(kw_path).unwrap()).unwrap();
+            keywords[suffix]["primary_keys"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .for_each(|key| {
                     primary_keys.push(key.as_str().unwrap().to_string());
-                }
-            };
-            if let Some(arr) = keywords["rs"]["secondary_keys"].as_array() {
-                for key in arr.iter() {
+                });
+            keywords[suffix]["secondary_keys"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .for_each(|key| {
                     secondary_keys.push(key.as_str().unwrap().to_string());
-                }
-            };
-
+                });
             return Self {
-                name: "Rust".to_string(),
+                name: suffix.to_string(),
                 hl_opts: HighlightingOptions {
                     numbers: true,
                     strings: true,
@@ -69,7 +74,7 @@ impl From<String> for FileType {
                     comments: true,
                     primary_keys,
                     secondary_keys,
-                },
+                }
             };
         }
         FileType::default()
