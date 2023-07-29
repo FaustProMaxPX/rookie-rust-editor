@@ -23,6 +23,7 @@ impl Row {
         // keep track of current color type
         // then we don't need to change color whenever ecounter a new character if it is the same
         let mut cur_color_type = &Type::None;
+        result.push_str(&format!("{}", color::Fg(cur_color_type.to_color())));
 
         for (index, g) in self.content[..]
             .graphemes(true)
@@ -185,10 +186,12 @@ impl Row {
         let chars: Vec<char> = self.content.chars().collect();
         let mut index = 0;
         while chars.get(index).is_some() {
-            if !self.highlight_character(&chars, hl_opts, &mut index)
+            if !self.highlight_comment(&chars, hl_opts, &mut index)
+                && !self.highlight_character(&chars, hl_opts, &mut index)
                 && !self.highlight_strings(&chars, hl_opts, &mut index)
-                && !self.highlight_comment(&chars, hl_opts, &mut index)
                 && !self.highlight_number(&chars, hl_opts, &mut index)
+                && !self.highlight_primary_keys(&chars, hl_opts, &mut index)
+                && !self.highlight_secondary_keys(&chars, hl_opts, &mut index)
             {
                 self.highlighting.push(Type::None);
                 index += 1;
@@ -196,6 +199,76 @@ impl Row {
         }
 
         self.highlight_match(query);
+    }
+
+    fn highlight_target_str(
+        &mut self,
+        chars: &Vec<char>,
+        target: &str,
+        index: &mut usize,
+        hl_type: Type,
+    ) -> bool {
+        if *index > 0 && !self.is_separator(chars[*index - 1]) {
+            return false;
+        }
+
+        if let Some(c) = chars.get(target.len().saturating_add(*index)) {
+            if !self.is_separator(*c) {
+                return false;
+            }
+        }
+
+        if target.is_empty() {
+            return false;
+        }
+        for (i, c) in target.chars().enumerate() {
+            if let Some(next_char) = chars.get(i.saturating_add(*index)) {
+                if *next_char != c {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
+        for _ in 0..target.len() {
+            self.highlighting.push(hl_type);
+            *index += 1;
+        }
+        true
+    }
+
+    fn highlight_primary_keys(
+        &mut self,
+        chars: &Vec<char>,
+        hl_opts: &HighlightingOptions,
+        index: &mut usize,
+    ) -> bool {
+        if hl_opts.primary_keys().is_empty() {
+            return false;
+        }
+        for keyword in hl_opts.primary_keys() {
+            if self.highlight_target_str(chars, keyword, index, Type::PrimaryKey) {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn highlight_secondary_keys(
+        &mut self,
+        chars: &Vec<char>,
+        hl_opts: &HighlightingOptions,
+        index: &mut usize,
+    ) -> bool {
+        if hl_opts.secondary_keys().is_empty() {
+            return false;
+        }
+        for keyword in hl_opts.secondary_keys() {
+            if self.highlight_target_str(chars, keyword, index, Type::SecondaryKey) {
+                return true;
+            }
+        }
+        false
     }
 
     fn highlight_number(
@@ -228,9 +301,10 @@ impl Row {
         hl_opts: &HighlightingOptions,
         index: &mut usize,
     ) -> bool {
-        if !hl_opts.comments() || *index != 0 || chars.get(*index).is_none() {
+        if !hl_opts.comments() || chars.get(*index).is_none() {
             return false;
         }
+
         let c = chars.get(*index).unwrap();
         if let Some(next_char) = chars.get((*index).saturating_add(1)) {
             if *c == '/' && *next_char == '/' {
@@ -333,6 +407,10 @@ impl Row {
         }
         false
     }
+
+    fn is_separator(&self, ch: char) -> bool {
+        ch.is_ascii_whitespace() || ch.is_ascii_punctuation()
+    }
 }
 
 impl From<&str> for Row {
@@ -430,7 +508,11 @@ mod row_tests {
         }
         row.highlight_match(Some("1"));
         let expected = vec![Type::Match, Type::Match, Type::Match];
-        assert_eq!(row.highlighting, expected, "res: {:#?}, expected: {:#?}", row.highlighting, expected);
+        assert_eq!(
+            row.highlighting, expected,
+            "res: {:#?}, expected: {:#?}",
+            row.highlighting, expected
+        );
     }
 
     #[test]
@@ -471,5 +553,13 @@ mod row_tests {
         let row = Row::from(string);
         let hl_opts = FileType::from("a.rs").highlighting_opts().clone();
         (row, hl_opts)
+    }
+
+    fn render_test() {
+        let (mut row, hl_opts) = create_row("1");
+        let mut index = 0;
+        row.highlight(None, &hl_opts);
+        
+        
     }
 }

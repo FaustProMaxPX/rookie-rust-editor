@@ -1,6 +1,6 @@
 use termion::color;
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone, Copy)]
 pub enum Type {
     None,
     Number,
@@ -9,6 +9,8 @@ pub enum Type {
     Escape,
     Character,
     Comment,
+    PrimaryKey,
+    SecondaryKey,
 }
 
 impl Type {
@@ -20,6 +22,8 @@ impl Type {
             Type::Escape => color::Rgb(255, 255, 0),
             Type::Character => color::Rgb(108, 113, 196),
             Type::Comment => color::Rgb(128,128,128),
+            Type::PrimaryKey => color::Rgb(0, 245, 255),
+            Type::SecondaryKey => color::Rgb(255, 99, 71),
             Type::None => color::Rgb(255, 255, 255),
         }
     }
