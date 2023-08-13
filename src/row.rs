@@ -560,6 +560,5 @@ mod row_tests {
         let mut index = 0;
         row.highlight(None, &hl_opts);
         
-        
     }
 }
